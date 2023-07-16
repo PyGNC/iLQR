@@ -25,7 +25,7 @@ def calculate_gradients(dj: Jacobians, p, q, r):
     )
 
 
-def calculate_hessian(df: Jacobians, cost: Hessians, P):
+def calculate_hessian_ilqr(df: Jacobians, cost: Hessians, P):
     A = df.dx
     B = df.du
     Gxu = cost.xu + A.T @ P @ B
@@ -37,7 +37,7 @@ def calculate_hessian(df: Jacobians, cost: Hessians, P):
     )
 
 
-def backward_pass(N, f, cost: Cost, g: Gradients, G: Hessians, x, u, K):
+def backward_pass(N, f, cost: Cost, x, u, K):
     delta_J = 0.0
     p = [0 for _ in N]
     P = [0 for _ in N]
@@ -52,24 +52,22 @@ def backward_pass(N, f, cost: Cost, g: Gradients, G: Hessians, x, u, K):
         r = grad(lambda: cost.stage(x[i], u), u)
         g = calculate_gradients(dj, p[i+1], q, r)
 
-        Gxx = G.xx(x[i], u[i])
-        Gxu = G.xu(x[i], u[i])
-        Gux = Gxu.T
-        Guu = G.uu(x[i], u[i])
-        # concider regualrization
+        G = calculate_hessian_ilqr(dj, G, P[i+1])
 
-        d[i] = np.linalg.inv(Guu) * g.u
-        K[i] = np.linalg.inv(Guu) * Gux
+        # concider adding regularization here if DDP is being used
 
-        P[i] = Gxx + K[i].T @ Guu @ K[i] - Gxu @ K[i] - K[i].T @ Gux
-        p[i] = g.x - K[i].T @ g.u + K[i].T @ Gux * d[i] - Gxu * d[i]
+        d[i] = np.linalg.inv(G.uu) * g.u
+        K[i] = np.linalg.inv(G.uu) * G.ux
+
+        P[i] = G.xx + K[i].T @ G.uu @ K[i] - G.xu @ K[i] - K[i].T @ G.ux
+        p[i] = g.x - K[i].T @ g.u + K[i].T @ G.ux * d[i] - G.xu * d[i]
 
         delta_J += np.dot(g.u, d[i])
 
     return d, K, delta_J
 
 
-def forward_rollout(f, x, u, N, alpha, d, K, g: Gradients):
+def forward_rollout(f, x, u, N, alpha, d, K):
     """
     Forward rollout of the system
 
@@ -119,7 +117,7 @@ def line_search(f, J, x, u, d, K, N, delta_J, g: Gradients, beta=0.1, c=0.5, max
         if max_iter == 0:
             print("Line search failed")
         max_iter -= 1
-        x, u = forward_rollout(f, x, u, N, alpha, d, K, g)
+        x, u = forward_rollout(f, x, u, N, alpha, d, K)
 
         alpha *= c
         if J(x, u) <= initial_cost + beta * delta_J:
@@ -138,25 +136,25 @@ def make_cost_function(cost: Cost, N):
         function -- cost function of state, and control
     """
     def J(x, u):
-        cost = 0
+        total_cost = 0
         for i in range(N-1):
-            cost += cost.stage(x[i], u[i])
-        cost += cost.final(x[N-1])
-        return cost
+            total_cost += cost.stage(x[i], u[i])
+        total_cost += cost.final(x[N-1])
+        return total_cost
 
     return J
 
 
-def core_solve(f, N, cost: Cost, g: Gradient, G: Hessian, x, u, max_iters=10, alpha=0.5, exit_tolerance=1e-6):
+def core_solve(f, N, cost: Cost, x, u, max_iters=10, alpha=0.5, exit_tolerance=1e-6):
     iterations = 0
     d = [1 for i in range(N-1)]
     while max(abs(d)) > 1e-3:
         iterations += 1
         if iterations > max_iters:
             raise Exception("Max iterations reached")
-        d, K, delta_J = backward_pass(N, cost, g, G, x, u, K)
+        d, K, delta_J = backward_pass(N, f, cost, x, u, K)
         J = make_cost_function(J, cost, N)
-        x, u, delta_J = line_search(f, J, x, u, d, K, N, alpha, g)
+        x, u, delta_J = line_search(f, J, x, u, d, K, N, alpha)
         if delta_J < exit_tolerance:
             break
     pass
