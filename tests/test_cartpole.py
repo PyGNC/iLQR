@@ -1,19 +1,25 @@
 import autograd.numpy as np
 from collections import namedtuple
+import unittest
 
-cart_mass = 1.0
-pole_mass = 0.25
-pole_length = 1.0
-g = 9.8
-damping_coefficient = 0.05
-force_limit = 10
+from src import PycubedGncCore
+rk4 = PycubedGncCore.rk4
 
 CartpoleConfig = namedtuple('CartpoleConfig', [
                             'cart_mass', 'pole_mass', 'pole_length', 'g', 'damping_coefficient', 'force_limit'])
 
+example_cartpole_config = CartpoleConfig(
+    cart_mass=1.0,
+    pole_mass=0.25,
+    pole_length=1.0,
+    g=9.8,
+    damping_coefficient=0.05,
+    force_limit=10
+)
+
 
 def generate_cartpole_dynamics(config: CartpoleConfig):
-    def cartpole_dynamics(x, u, dt):
+    def cartpole_dynamics(x, u):
         theta = x[1]
         z_dot = x[2]
         theta_dot = x[3]
@@ -47,3 +53,26 @@ def generate_cartpole_dynamics(config: CartpoleConfig):
 
         return [z_dot, theta_dot, z_dot_dot, theta_dot_dot]
     return cartpole_dynamics
+
+
+def rk4_dynamics(x, u):
+    cartpole_dynamics = generate_cartpole_dynamics(example_cartpole_config)
+    return rk4(cartpole_dynamics, x, u, 0.05)
+
+
+def rollout(x0, u, steps):
+    x = [x0]
+    for i in range(steps):
+        x.append(rk4_dynamics(x[i], u))
+    return x
+
+
+
+class TestCartpole(unittest.TestCase):
+    def test_cartpole(self):
+        self.assertEqual(1, 1)
+        state_hist = rollout([0, 5, 0, 0], 0, 10)
+        # plt.plot(state_hist)
+
+if __name__ == '__main__':
+    unittest.main()

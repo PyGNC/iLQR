@@ -1,0 +1,18 @@
+[project]
+name = "PycubedGncCore"
+version = "0.0.1"
+authors = [
+  { name="thetazero", email="lesha.seletskiy@gmail.com" },
+]
+description = "Pycubed Guidance Navigation and Control Core Library"
+readme = "README.md"
+requires-python = ">=3.9"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: GPL-3.0",
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/PyGNC/iLQR"
+"Bug Tracker" = "https://github.com/PyGNC/iLQR/issues"
